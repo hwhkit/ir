@@ -1,0 +1,86 @@
+# IR —— 本机 Docker 完整部署套（Core + PostgreSQL + Edge 三容器闭环）
+# 用法：
+#   docker compose -f deploy/docker-compose.yml up -d --build
+#   ./deploy/demo-task.sh            # 注入一个演示任务，Edge 数秒内认领执行
+#   docker compose -f deploy/docker-compose.yml logs -f edge
+#   docker compose -f deploy/docker-compose.yml down
+name: ir
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: ir-db
+    environment:
+      POSTGRES_USER: ir
+      POSTGRES_PASSWORD: ir
+      POSTGRES_DB: ir
+    volumes:
+      - ir-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ir -d ir"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+
+  core:
+    build:
+      context: ..
+      dockerfile: core/Dockerfile
+    container_name: ir-core
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://ir:ir@db:5432/ir?sslmode=disable
+      PLATFORM__ENABLED: "true"
+      PLATFORM__PUBLIC_BASE_URL: http://127.0.0.1:18080
+      AGENT_API__ENABLED: "true"
+      IR__PUSH_ENABLED: "false"
+      ADMIN__USERNAME: admin
+      ADMIN__PASSWORD: ir-demo-admin
+      ADMIN__SESSION_SECRET: ir-demo-session-secret-0123456789abcdef0123456789abcdef
+      ADMIN__SECURE_COOKIES: "false"
+    ports:
+      - "18080:8080"        # Central Console + agent-api（宿主机访问）
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://127.0.0.1:8080/health/ready"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  # 一次性初始化：等 Core 就绪 → 登录管理台 → 创建 remote_pull 演示智能体。
+  # 密钥为演示值（demo 套可预置；生产环境凭据只在签发时展示、永不预置）。
+  core-init:
+    image: python:3.12-alpine
+    container_name: ir-core-init
+    depends_on:
+      core:
+        condition: service_healthy
+    environment:
+      CORE: http://core:8080
+      ADMIN__USERNAME: admin
+      ADMIN__PASSWORD: ir-demo-admin
+      DEMO_KEY: demo-master-key-ir001
+    volumes:
+      - ./init.py:/init/init.py:ro
+    entrypoint: ["python3", "/init/init.py"]
+
+  edge:
+    build:
+      context: ../edge
+      dockerfile: Dockerfile
+    container_name: ir-edge
+    depends_on:
+      core-init:
+        condition: service_completed_successfully
+    environment:
+      IR_SERVER: http://core:8080
+      AGENT_SLUG: pool-demo
+      AGENT_KEY: demo-master-key-ir001
+      CLUSTER: docker-demo
+      POOL_DIR: /pool
+      RUN_TASK_ORIG: /pool/demo-run-task.sh
+      MAX_SLOTS: "2"
+    restart: unless-stopped
+
+volumes:
+  ir-db-data:

@@ -1,0 +1,4 @@
+# 子项目是独立 git 仓库（core/ = hwhkit/agent-server-go, edge/ = hwhkit/ir-edge-go）
+/core/
+/edge/
+.DS_Store

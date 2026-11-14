@@ -1,0 +1,13 @@
+*
+!core/go.mod
+!core/go.sum
+!core/cmd
+!core/cmd/**
+!core/internal
+!core/internal/**
+!core/web
+!core/web/**
+!core/config
+!core/config/**
+!edge/scripts/agent-pool
+!edge/scripts/agent-pool/**

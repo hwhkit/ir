@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>IR · Intelligent Router — 架构总览</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #111418;
+    --bg-deep: #0a0c0f;
+    --panel: rgba(23, 27, 32, 0.9);
+    --text: #f2f4f7;
+    --text-soft: #c6ccd4;
+    --muted: #8a939e;
+    --faint: #5c6570;
+    --line: rgba(186, 194, 203, 0.15);
+    --line-strong: rgba(186, 194, 203, 0.3);
+    --silver: #cdd5de;
+    --silver-strong: #aeb9c4;
+    --ink: #10151b;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 40px 28px 80px;
+    color: var(--text);
+    font: 14px/1.65 ui-sans-serif, system-ui, -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    background:
+      radial-gradient(circle at 8% -8%, rgba(174, 185, 195, 0.15), transparent 30rem),
+      radial-gradient(circle at 98% 14%, rgba(156, 170, 182, 0.10), transparent 30rem),
+      repeating-linear-gradient(112deg, rgba(255, 255, 255, 0.014) 0 1px, transparent 1px 4px),
+      linear-gradient(155deg, var(--bg) 0%, var(--bg-deep) 100%);
+    min-height: 100vh;
+  }
+  .wrap { max-width: 1280px; margin: 0 auto; }
+  header.hero { text-align: center; padding: 26px 0 8px; }
+  .hero .eyebrow { color: var(--muted); font: 700 10px/1 "SFMono-Regular", Consolas, Menlo, monospace; letter-spacing: 0.22em; text-transform: uppercase; }
+  .hero h1 {
+    margin: 14px 0 6px; font-size: 40px; letter-spacing: -0.03em;
+    background: linear-gradient(180deg, #f2f4f7 0%, #cdd5de 60%, #9aa5b1 100%);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  .hero p.sub { margin: 0 auto; max-width: 720px; color: var(--text-soft); }
+  h2.sec {
+    margin: 52px 0 6px; font-size: 20px; letter-spacing: -0.02em;
+    display: flex; align-items: baseline; gap: 12px;
+  }
+  h2.sec .no { color: var(--muted); font: 700 12px/1 monospace; letter-spacing: 0.18em; }
+  p.lede { margin: 0 0 16px; color: var(--text-soft); max-width: 900px; }
+  .panel {
+    border: 1px solid var(--line-strong);
+    border-radius: 16px;
+    background:
+      linear-gradient(160deg, rgba(255,255,255,0.05), rgba(205,213,222,0.04) 44%, rgba(10,13,16,0.18) 48%, rgba(156,170,182,0.05)),
+      repeating-linear-gradient(112deg, transparent 0 3px, rgba(205,213,222,0.022) 3px 4px),
+      linear-gradient(135deg, rgba(38,44,51,0.92), rgba(23,27,32,0.94));
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.10), inset 0 -1px 0 rgba(0,0,0,0.28), 0 18px 50px rgba(0,0,0,0.4);
+    padding: 22px;
+    overflow-x: auto;
+  }
+  .panel svg { display: block; width: 100%; height: auto; }
+  svg text { font-family: "SFMono-Regular", Consolas, Menlo, monospace; }
+  svg .t-title { fill: #f2f4f7; font-size: 13px; font-weight: 700; letter-spacing: 0.06em; }
+  svg .t-label { fill: #c6ccd4; font-size: 11.5px; }
+  svg .t-label-strong { fill: #f2f4f7; font-size: 11.5px; font-weight: 700; }
+  svg .t-small { fill: #8a939e; font-size: 10px; }
+  svg .t-tag { fill: #cdd5de; font-size: 9.5px; letter-spacing: 0.14em; text-transform: uppercase; }
+  .terms { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px; }
+  .term {
+    border: 1px solid var(--line); border-radius: 11px; padding: 13px 15px;
+    background: rgba(18, 23, 28, 0.6);
+  }
+  .term b { display: block; color: var(--silver); font: 750 13px/1.4 var(--mono, monospace); letter-spacing: 0.04em; }
+  .term i { display: block; margin: 2px 0 5px; color: var(--muted); font-style: normal; font-size: 11px; }
+  .term span { color: var(--text-soft); font-size: 12.5px; }
+  footer { margin-top: 64px; padding-top: 18px; border-top: 1px solid var(--line); color: var(--faint); font-size: 12px; text-align: center; }
+  code.k { color: var(--silver); background: rgba(205,213,222,0.08); border: 1px solid var(--line); border-radius: 4px; padding: 1px 6px; font-size: 12px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="hero">
+    <div class="eyebrow">IR · Intelligent Router — Architecture</div>
+    <h1>智能路由 · 架构总览</h1>
+    <p class="sub">IR Mesh：Core（控制面）与 Edge（执行节点）经 IR Link 组成的分布式智能体网络。
+       任务从任意入口进入 Core，由租约队列路由到某台 Edge 的机群执行，全程审计。</p>
+  </header>
+
+  <!-- ============ 术语体系 ============ -->
+  <h2 class="sec"><span class="no">§0</span>术语体系（IR 家族）</h2>
+  <p class="lede">命名沿网络设备隐喻：Core/Edge/Link/Mesh 均为真实网络概念；全部术语以本表为单一事实源。</p>
+  <div class="panel"><div class="terms">
+    <div class="term"><b>IR</b><i>智能路由 · 伞形品牌</i><span>整个产品：Core + 全部 Edge + Link 协议 + 业务层的总称。</span></div>
+    <div class="term"><b>IR Core</b><i>核心路由器 · 控制面</i><span>平台服务端（仓库 agent-server-go）：入口、路由决策、租约队列、审计、管理台。</span></div>
+    <div class="term"><b>IR Edge</b><i>边缘路由器 · 执行节点</i><span>机器端程序 ir：常驻 daemon 认领任务，派发给本机 Agent 执行。</span></div>
+    <div class="term"><b>IR Mesh</b><i>智能体组网</i><span>Core + 全部 Edge 构成的分布式网络；「管理运行中的智能体网络」即指此。</span></div>
+    <div class="term"><b>IR Link</b><i>链路协议</i><span>agent-api/v1：claim 长轮询 / renew 续租 / complete 幂等回执 / heartbeat 存活 / runs 直提。</span></div>
+    <div class="term"><b>ir-noded</b><i>节点守护进程</i><span>Edge 的服务形态（systemd/launchd 常驻）。</span></div>
+    <div class="term"><b>Node Console</b><i>节点控制台</i><span>Edge 本机 Web（127.0.0.1:7800）：配置与查看本机 Agent。</span></div>
+    <div class="term"><b>Central Console</b><i>中央控制台</i><span>Core 管理台 SPA：全局智能体、连接器、日志、团队编排。</span></div>
+    <div class="term"><b>Node Key / Cluster Key</b><i>节点密钥 / 集群子密钥</i><span>主密钥（入站签名 + 连接认证）与 HMAC 派生（按集群吊销）。</span></div>
+    <div class="term"><b>Fleet</b><i>机群</i><span>一台 Edge 上的执行池：本机 Agent 的集合与并发容量。</span></div>
+    <div class="term"><b>Run</b><i>运行</i><span>一次任务执行的全生命周期记录（审计主键）。</span></div>
+    <div class="term"><b>Position / Team</b><i>岗位 / 编排</i><span>业务层：职能模板与多步团队流程（Core 管理）。</span></div>
+  </div></div>
+
+  <!-- ============ §1 全局拓扑 ============ -->
+  <h2 class="sec"><span class="no">§1</span>IR Mesh 全局拓扑</h2>
+  <p class="lede">左侧为任务入口，中部 IR Core 控制面，右侧为执行节点（每台机器一个 ir daemon + 一个 Fleet）。
+     Core 与 Edge 之间唯一通道是 IR Link（出站长轮询，Edge 无需公网入口），认证由 Node Key / Cluster Key 完成。</p>
+  <div class="panel">
+  <svg viewBox="0 0 1200 640" role="img" aria-label="IR Mesh 全局拓扑图">
+    <defs>
+      <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 z" fill="#cdd5de"></path>
+      </marker>
+      <marker id="ar-dim" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 z" fill="#7d8894"></path>
+      </marker>
+      <linearGradient id="steel" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="rgba(255,255,255,0.10)"></stop>
+        <stop offset="0.46" stop-color="rgba(205,213,222,0.07)"></stop>
+        <stop offset="0.52" stop-color="rgba(10,13,16,0.22)"></stop>
+        <stop offset="1" stop-color="rgba(174,185,195,0.09)"></stop>
+      </linearGradient>
+    </defs>
+
+    <!-- 调用方列 -->
+    <text class="t-tag" x="24" y="40">ingress · 任务入口</text>
+    <g font-size="11">
+      <rect x="24" y="58" width="200" height="64" rx="10" fill="url(#steel)" stroke="rgba(205,213,222,0.3)"></rect>
+      <text class="t-label-strong" x="40" y="82">MOTA Push</text>
+      <text class="t-small" x="40" y="102">POST /ir/push（async 回调）</text>
+      <rect x="24" y="150" width="200" height="64" rx="10" fill="url(#steel)" stroke="rgba(205,213,222,0.3)"></rect>
+      <text class="t-label-strong" x="40" y="174">动态入口</text>
+      <text class="t-small" x="40" y="194">POST /agent/{slug}（HMAC 签名）</text>
+      <rect x="24" y="242" width="200" height="64" rx="10" fill="url(#steel)" stroke="rgba(205,213,222,0.3)"></rect>
+      <text class="t-label-strong" x="40" y="266">A2A / 团队运行</text>
+      <text class="t-small" x="40" y="286">JSON-RPC · 多步编排</text>
+      <rect x="24" y="334" width="200" height="64" rx="10" fill="url(#steel)" stroke="rgba(205,213,222,0.3)"></rect>
+      <text class="t-label-strong" x="40" y="358">机器侧直提</text>
+      <text class="t-small" x="40" y="378">POST /runs（cron / 本地触发）</text>
+    </g>
+
+    <!-- Core 控制面 -->
+    <text class="t-tag" x="300" y="40">ir core · 控制面</text>
+    <rect x="300" y="50" width="430" height="540" rx="16" fill="url(#steel)" stroke="rgba(205,213,222,0.42)" stroke-width="1.4"></rect>
+    <text class="t-title" x="330" y="86">IR Core（agent-server-go）</text>
+    <text class="t-small" x="330" y="108">Central Console 管理台 → /admin（SPA）</text>
+    <rect x="330" y="122" width="370" height="42" rx="9" fill="rgba(205,213,222,0.08)" stroke="rgba(205,213,222,0.28)"></rect>
+    <text class="t-label" x="346" y="148">api/http —— 入口适配 · 签名校验 · Bearer 鉴权</text>
+
+    <rect x="330" y="182" width="178" height="52" rx="9" fill="rgba(205,213,222,0.07)" stroke="rgba(205,213,222,0.24)"></rect>
+    <text class="t-label" x="344" y="206">dispatch · 路由决策</text>
+    <text class="t-small" x="344" y="224">agentapi · Link 服务端</text>
+    <rect x="522" y="182" width="178" height="52" rx="9" fill="rgba(205,213,222,0.07)" stroke="rgba(205,213,222,0.24)"></rect>
+    <text class="t-label" x="536" y="206">push / dynamic / a2a</text>
+    <text class="t-small" x="536" y="224">teamrun · 多步编排</text>
+
+    <rect x="330" y="252" width="370" height="52" rx="9" fill="rgba(205,213,222,0.07)" stroke="rgba(205,213,222,0.24)"></rect>
+    <text class="t-label" x="346" y="276">租约队列 agent_pull_tasks（SKIP LOCKED）</text>
+    <text class="t-small" x="346" y="294">attempts ≤ 3 · executionDeadline · abort 位</text>
+
+    <rect x="330" y="322" width="370" height="42" rx="9" fill="rgba(205,213,222,0.08)" stroke="rgba(205,213,222,0.28)"></rect>
+    <text class="t-label" x="346" y="348">agent_runs —— 全生命周期审计（每次派发可追溯）</text>
+
+    <rect x="330" y="382" width="370" height="52" rx="9" fill="rgba(205,213,222,0.07)" stroke="rgba(205,213,222,0.24)"></rect>
+    <text class="t-label" x="346" y="406">PostgreSQL（mot 库 / 隔离测试库）</text>
+    <text class="t-small" x="346" y="424">队列 · 租约 · 审计 · 幂等 · 注册表</text>
+
+    <rect x="330" y="452" width="178" height="52" rx="9" fill="rgba(205,213,222,0.07)" stroke="rgba(205,213,222,0.24)"></rect>
+    <text class="t-label" x="344" y="476">reaper · 后台回收</text>
+    <text class="t-small" x="344" y="494">过期租约 / 队列 TTL / worker 离线</text>
+    <rect x="522" y="452" width="178" height="52" rx="9" fill="rgba(205,213,222,0.07)" stroke="rgba(205,213,222,0.24)"></rect>
+    <text class="t-label" x="536" y="476">集群子密钥名单</text>
+    <text class="t-small" x="536" y="494">按集群吊销派生凭据</text>
+
+    <!-- 调用方 → Core -->
+    <line x1="224" y1="90" x2="296" y2="140" stroke="#cdd5de" stroke-width="1.4" marker-end="url(#ar)"></line>
+    <line x1="224" y1="182" x2="296" y2="182" stroke="#cdd5de" stroke-width="1.4" marker-end="url(#ar)"></line>
+    <line x1="224" y1="274" x2="296" y2="230" stroke="#cdd5de" stroke-width="1.4" marker-end="url(#ar)"></line>
+    <line x1="224" y1="366" x2="296" y2="420" stroke="#7d8894" stroke-width="1.2" stroke-dasharray="5 4" marker-end="url(#ar-dim)"></line>
+
+    <!-- Edge 节点 -->
+    <text class="t-tag" x="880" y="40">ir edge · 执行节点（N 台，任意网络）</text>
+    <g>
+      <rect x="880" y="58" width="296" height="150" rx="14" fill="url(#steel)" stroke="rgba(205,213,222,0.4)" stroke-width="1.3"></rect>
+      <text class="t-title" x="900" y="90">Edge #1 — pi 集群</text>
+      <rect x="900" y="104" width="120" height="40" rx="8" fill="rgba(205,213,222,0.08)" stroke="rgba(205,213,222,0.26)"></rect>
+      <text class="t-label" x="912" y="128">ir daemon</text>
+      <rect x="1032" y="104" width="120" height="40" rx="8" fill="rgba(205,213,222,0.08)" stroke="rgba(205,213,222,0.26)"></rect>
+      <text class="t-label" x="1044" y="128">Fleet</text>
+      <rect x="900" y="152" width="252" height="40" rx="8" fill="rgba(205,213,222,0.06)" stroke="rgba(205,213,222,0.2)"></rect>
+      <text class="t-label" x="912" y="176">本机 Agent：pi 管线 · sec03 · LLM 链</text>
+
+      <rect x="880" y="232" width="296" height="150" rx="14" fill="url(#steel)" stroke="rgba(205,213,222,0.4)" stroke-width="1.3"></rect>
+      <text class="t-title" x="900" y="264">Edge #2 — cc 集群</text>
+      <rect x="900" y="278" width="120" height="40" rx="8" fill="rgba(205,213,222,0.08)" stroke="rgba(205,213,222,0.26)"></rect>
+      <text class="t-label" x="912" y="302">ir daemon</text>
+      <rect x="1032" y="278" width="120" height="40" rx="8" fill="rgba(205,213,222,0.08)" stroke="rgba(205,213,222,0.26)"></rect>
+      <text class="t-label" x="1044" y="302">Fleet</text>
+      <rect x="900" y="326" width="252" height="40" rx="8" fill="rgba(205,213,222,0.06)" stroke="rgba(205,213,222,0.2)"></rect>
+      <text class="t-label" x="912" y="350">本机 Agent：claude 管线 · skills</text>
+
+      <rect x="880" y="406" width="296" height="150" rx="14" fill="url(#steel)" stroke="rgba(205,213,222,0.28)" stroke-dasharray="6 4"></rect>
+      <text class="t-title" x="900" y="438">Edge #N — 任意机器</text>
+      <text class="t-small" x="900" y="462">ir init → agents add → daemon start</text>
+      <text class="t-small" x="900" y="484">NAT / 动态 IP 均可（纯出站连接）</text>
+      <text class="t-small" x="900" y="506">Node Console: 127.0.0.1:7800</text>
+    </g>
+
+    <!-- IR Link 双向 -->
+    <text class="t-tag" x="752" y="128">ir link · agent-api/v1</text>
+    <line x1="730" y1="150" x2="876" y2="150" stroke="#cdd5de" stroke-width="1.6" marker-end="url(#ar)"></line>
+    <text class="t-small" x="742" y="142">claim 长轮询（出站）</text>
+    <line x1="876" y1="200" x2="730" y2="200" stroke="#cdd5de" stroke-width="1.6" marker-end="url(#ar)"></line>
+    <text class="t-small" x="742" y="192">complete / renew（幂等回执）</text>
+    <line x1="730" y1="300" x2="876" y2="300" stroke="#7d8894" stroke-width="1.2" stroke-dasharray="5 4" marker-end="url(#ar-dim)"></line>
+    <text class="t-small" x="742" y="292">heartbeat · 容量上报</text>
+    <line x1="876" y1="350" x2="730" y2="350" stroke="#7d8894" stroke-width="1.2" stroke-dasharray="5 4" marker-end="url(#ar-dim)"></line>
+    <text class="t-small" x="742" y="342">runs 直提（cron）</text>
+
+    <!-- 认证标注 -->
+    <rect x="736" y="430" width="140" height="86" rx="10" fill="rgba(18,23,28,0.7)" stroke="rgba(205,213,222,0.24)"></rect>
+    <text class="t-label-strong" x="750" y="456">认证</text>
+    <text class="t-small" x="750" y="478">Bearer Node Key</text>
+    <text class="t-small" x="750" y="496">或 Cluster Key</text>
+    <text class="t-small" x="750" y="510">（HMAC 派生）</text>
+    <line x1="806" y1="428" x2="806" y2="398" stroke="#7d8894" stroke-width="1.1" stroke-dasharray="4 3"></line>
+
+    <text class="t-small" x="300" y="612">Core 全部状态落 PostgreSQL —— 重启/发版不丢队列与租约；Edge 纯出站，无入站端口要求。</text>
+  </svg>
+  </div>
+
+  <!-- ============ §2 Core 内部 ============ -->
+  <h2 class="sec"><span class="no">§2</span>IR Core 内部分层（DDD）</h2>
+  <p class="lede">依赖方向自上而下单向：api → app → domain ← infra。架构守护测试（archguard）在 CI 中强制这些边界。</p>
+  <div class="panel">
+  <svg viewBox="0 0 1200 430" role="img" aria-label="IR Core 内部分层">
+    <rect x="40" y="30" width="1120" height="72" rx="12" fill="url(#steel)" stroke="rgba(205,213,222,0.36)"></rect>
+    <text class="t-title" x="64" y="60">api/http —— HTTP 适配层</text>
+    <text class="t-small" x="64" y="84">admin.go（管理台 v2） · agentapi.go（IR Link 路由） · router.go —— 只做协议拆解，不写业务</text>
+    <line x1="600" y1="102" x2="600" y2="128" stroke="#cdd5de" stroke-width="1.4" marker-end="url(#ar)"></line>
+
+    <rect x="40" y="130" width="1120" height="96" rx="12" fill="url(#steel)" stroke="rgba(205,213,222,0.36)"></rect>
+    <text class="t-title" x="64" y="160">app —— 用例层（每目录一个自治用例）</text>
+    <text class="t-small" x="64" y="184">agentapi（Link 服务端） · dispatch（路由+租约队列入口） · push / dynamic / a2a / teamrun / worker / admin / backend / share</text>
+    <text class="t-small" x="64" y="206">gate（双闸并发） · callback（异步回传） · catalog / dashboard（管理用例）</text>
+    <line x1="600" y1="226" x2="600" y2="252" stroke="#cdd5de" stroke-width="1.4" marker-end="url(#ar)"></line>
+
+    <rect x="40" y="254" width="1120" height="72" rx="12" fill="url(#steel)" stroke="rgba(205,213,222,0.36)"></rect>
+    <text class="t-title" x="64" y="284">domain —— 领域定义（无环，仅 stdlib + domain）</text>
+    <text class="t-small" x="64" y="308">agent · connector（Link 契约/密钥派生） · run · team · position · platform · exec · audit · account</text>
+    <line x1="600" y1="326" x2="600" y2="352" stroke="#cdd5de" stroke-width="1.4" marker-end="url(#ar)"></line>
+
+    <rect x="40" y="354" width="1120" height="52" rx="12" fill="url(#steel)" stroke="rgba(205,213,222,0.36)"></rect>
+    <text class="t-title" x="64" y="384">infra —— 基础设施：postgres（唯一 SQL 面） · crypto · config · execengine/execprocess · httpx · backend</text>
+    <text class="t-tag" x="64" y="420">archguard —— CI 架构守护测试：强制 api→app→domain←infra 边界</text>
+  </svg>
+  </div>
+
+  <!-- ============ §3 IR Edge 内部 ============ -->
+  <h2 class="sec"><span class="no">§3</span>IR Edge 内部（ir 单二进制）</h2>
+  <p class="lede">三种形态一体：CLI 子命令、常驻 daemon（ir-noded）、本机 Web 控制台。daemon 与平台之间只经
+     <code class="k">agentapiclient</code>（IR Link HTTP 客户端），本仓库不 import 平台任何内部包。</p>
+  <div class="panel">
+  <svg viewBox="0 0 1200 430" role="img" aria-label="IR Edge 内部结构">
+    <rect x="40" y="30" width="640" height="370" rx="14" fill="url(#steel)" stroke="rgba(205,213,222,0.4)" stroke-width="1.3"></rect>
+    <text class="t-title" x="64" y="62">ir daemon（ir-noded）</text>
+    <rect x="64" y="80" width="180" height="52" rx="9" fill="rgba(205,213,222,0.08)" stroke="rgba(205,213,222,0.26)"></rect>
+    <text class="t-label" x="76" y="102">claim 长轮询循环</text>
+    <text class="t-small" x="76" y="120">204 立即重试 · 403 停机</text>
+    <rect x="260" y="80" width="180" height="52" rx="9" fill="rgba(205,213,222,0.08)" stroke="rgba(205,213,222,0.26)"></rect>
+    <text class="t-label" x="272" y="102">renew 循环（租约/3）</text>
+    <text class="t-small" x="272" y="120">abort / 409 → 杀进程树</text>
+    <rect x="456" y="80" width="180" height="52" rx="9" fill="rgba(205,213,222,0.08)" stroke="rgba(205,213,222,0.26)"></rect>
+    <text class="t-label" x="468" y="102">heartbeat（自适应）</text>
+    <text class="t-small" x="468" y="120">容量/能力域上报</text>
+
+    <rect x="64" y="150" width="572" height="46" rx="9" fill="rgba(205,213,222,0.07)" stroke="rgba(205,213,222,0.24)"></rect>
+    <text class="t-label" x="78" y="178">本机路由表（agentd.yaml）—— slug → 执行方式 · 超时 · 容量</text>
+
+    <rect x="64" y="214" width="278" height="60" rx="9" fill="rgba(205,213,222,0.08)" stroke="rgba(205,213,222,0.26)"></rect>
+    <text class="t-label-strong" x="78" y="240">ExecRunner</text>
+    <text class="t-small" x="78" y="260">进程执行：payload → stdin，stdout → 结果</text>
+    <rect x="358" y="214" width="278" height="60" rx="9" fill="rgba(205,213,222,0.08)" stroke="rgba(205,213,222,0.26)"></rect>
+    <text class="t-label-strong" x="372" y="240">HTTPRunner</text>
+    <text class="t-small" x="372" y="260">常驻服务型 Agent：POST 本地端点</text>
+
+    <rect x="64" y="292" width="278" height="46" rx="9" fill="rgba(205,213,222,0.06)" stroke="rgba(205,213,222,0.2)"></rect>
+    <text class="t-label" x="78" y="320">本机 Agent A —— 脚本 / CLI 管线</text>
+    <rect x="358" y="292" width="278" height="46" rx="9" fill="rgba(205,213,222,0.06)" stroke="rgba(205,213,222,0.2)"></rect>
+    <text class="t-label" x="372" y="320">本机 Agent B —— 常驻服务</text>
+
+    <rect x="40" y="150" width="0" height="0"></rect>
+    <text class="t-tag" x="700" y="60">node console · 127.0.0.1:7800</text>
+    <rect x="700" y="72" width="460" height="120" rx="14" fill="url(#steel)" stroke="rgba(205,213,222,0.34)"></rect>
+    <text class="t-label" x="722" y="102">/api/status —— 实时状态（内存直出，无 DB）</text>
+    <text class="t-label" x="722" y="126">/api/agents —— 配置读写 + 热重载</text>
+    <text class="t-label" x="722" y="150">/api/agents/{slug}/logs —— 本机日志</text>
+    <text class="t-small" x="722" y="176">仅绑定回环地址；与 ir 子命令写同一份 agentd.yaml</text>
+
+    <text class="t-tag" x="700" y="232">infra · 三件套</text>
+    <rect x="700" y="244" width="460" height="156" rx="14" fill="url(#steel)" stroke="rgba(205,213,222,0.34)"></rect>
+    <text class="t-label" x="722" y="274">agentapiclient —— IR Link 全端点封装（唯一平台访问面）</text>
+    <text class="t-label" x="722" y="300">nodecfg —— agentd.yaml 校验 / 原子写 / watch 热重载</text>
+    <text class="t-label" x="722" y="326">keyring —— 密钥文件（600）+ Cluster Key 派生</text>
+    <text class="t-small" x="722" y="358">cmd/ir —— init · agents add|list|test · daemon · service · status · submit</text>
+    <text class="t-small" x="722" y="380">domain/agentd —— Runner 接口 + 运行态（环形缓冲，Web 直出）</text>
+  </svg>
+  </div>
+
+  <!-- ============ §4 任务生命周期 ============ -->
+  <h2 class="sec"><span class="no">§4</span>任务生命周期（租约状态机）</h2>
+  <p class="lede">交付语义为 at-least-once：租约过期即重派（attempts ≤ MAX_ATTEMPTS），双执行风险由 claim 携带 attempts
+     与审计可追溯来管理；有副作用的连接器须自行幂等。三级时限：队列 TTL → 单次租约 → 执行墙钟。</p>
+  <div class="panel">
+  <svg viewBox="0 0 1200 300" role="img" aria-label="任务租约状态机">
+    <rect x="60" y="110" width="150" height="56" rx="11" fill="rgba(205,213,222,0.1)" stroke="rgba(205,213,222,0.4)"></rect>
+    <text class="t-label-strong" x="104" y="134">queued</text>
+    <text class="t-small" x="96" y="152">队列 TTL 内等待认领</text>
+    <rect x="380" y="110" width="150" height="56" rx="11" fill="rgba(205,213,222,0.16)" stroke="rgba(205,213,222,0.5)"></rect>
+    <text class="t-label-strong" x="424" y="134">leased</text>
+    <text class="t-small" x="400" y="152">租约 90s · renew /3</text>
+    <rect x="760" y="40" width="170" height="52" rx="11" fill="rgba(205,213,222,0.2)" stroke="rgba(205,213,222,0.6)"></rect>
+    <text class="t-label-strong" x="800" y="62">completed</text>
+    <text class="t-small" x="790" y="80">complete(succeeded)</text>
+    <rect x="760" y="112" width="170" height="52" rx="11" fill="rgba(205,213,222,0.08)" stroke="rgba(205,213,222,0.3)"></rect>
+    <text class="t-label-strong" x="812" y="134">failed</text>
+    <text class="t-small" x="774" y="152">三败 / 超墙钟 / TTL</text>
+    <rect x="760" y="184" width="170" height="52" rx="11" fill="rgba(205,213,222,0.08)" stroke="rgba(205,213,222,0.3)"></rect>
+    <text class="t-label-strong" x="812" y="206">canceled</text>
+    <text class="t-small" x="786" y="224">abort 位 → 停机</text>
+    <line x1="210" y1="138" x2="376" y2="138" stroke="#cdd5de" stroke-width="1.6" marker-end="url(#ar)"></line>
+    <text class="t-small" x="236" y="128">claim（SKIP LOCKED 独占）</text>
+    <line x1="530" y1="122" x2="756" y2="70" stroke="#cdd5de" stroke-width="1.6" marker-end="url(#ar)"></line>
+    <text class="t-small" x="560" y="86">complete(succeeded) —— 幂等，重放 accepted</text>
+    <line x1="530" y1="140" x2="756" y2="140" stroke="#cdd5de" stroke-width="1.6" marker-end="url(#ar)"></line>
+    <text class="t-small" x="560" y="132">complete(failed)</text>
+    <line x1="530" y1="158" x2="756" y2="212" stroke="#7d8894" stroke-width="1.3" marker-end="url(#ar-dim)"></line>
+    <text class="t-small" x="560" y="196">abort:true → complete(aborted)</text>
+    <path d="M 455 110 C 430 40, 260 40, 150 104" fill="none" stroke="#7d8894" stroke-width="1.3" stroke-dasharray="6 4" marker-end="url(#ar-dim)"></path>
+    <text class="t-small" x="212" y="52">租约过期重派（attempts&lt;3 且未过墙钟）</text>
+    <text class="t-small" x="1000" y="130">重派判定失败 →</text>
+    <text class="t-small" x="1000" y="150">failed(lease_expired)</text>
+    <text class="t-small" x="1000" y="168">failed(task_timeout)</text>
+    <text class="t-small" x="1000" y="208">迟到结果 → superseded</text>
+    <text class="t-small" x="60" y="256">三级时限：queue TTL（默认 1h） → 单次租约（90s，renew 重置） → 执行墙钟（executionDeadline = 首派 + Agent timeout）</text>
+  </svg>
+  </div>
+
+  <!-- ============ §5 安全模型 ============ -->
+  <h2 class="sec"><span class="no">§5</span>安全模型（三种凭据）</h2>
+  <p class="lede">动态入口的入站签名走各智能体的 Node Key；Edge 连接认证共享同一把主密钥或其派生子密钥；
+     act_ 连接器令牌为兼容路径（管理台签发，可服务多智能体）。</p>
+  <div class="panel"><div class="terms">
+    <div class="term"><b>Node Key</b><i>节点密钥（主密钥）</i><span>智能体签名密钥。入站：调用方以 HMAC 签名请求动态入口；连接：Edge 直接 Bearer 持有（持主密钥者视为可信，不受集群名单影响）。轮换有 24h 宽限。</span></div>
+    <div class="term"><b>Cluster Key</b><i>集群子密钥</i><span>base64url(HMAC-SHA256(NodeKey, "ir-cluster-v1\0" + clusterID))。平台按名单验算——名单删除即吊销该集群，主密钥与其余集群不受影响。推荐多集群部署形态。</span></div>
+    <div class="term"><b>act_ Token</b><i>连接器令牌（兼容）</i><span>Central Console 签发，SHA-256 落库、明文一次性展示；scope 限定可认领的 slug 集合；轮换带宽限期。</span></div>
+    <div class="term"><b>运行时防线</b><i>纵深防御</i><span>入队/认领/回执全程 Bearer；claim 403 防枚举；双实例 409 检测；attempts 与派发审计让双执行可追溯；密钥轮换宽限不中断在途任务。</span></div>
+  </div></div>
+
+  <footer>
+    IR · Intelligent Router — 架构总览 · core = 平台服务端 · edge = 机器端程序 · 协议契约见 core/doc/AGENT-PULL-API.md
+  </footer>
+</div>
+</body>
+</html>
