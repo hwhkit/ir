@@ -22,6 +22,17 @@ def call(method, path, payload=None, headers=None):
     except urllib.error.HTTPError as e:
         return e.code, e.read().decode()[:300]
 
+def call_retry(method, path, payload=None, headers=None, tries=5):
+    """带 429 退避的调用：限流窗口过了再试，不让一次性 init 被 429 打死。"""
+    for i in range(tries):
+        st, body = call(method, path, payload, headers)
+        if st != 429:
+            return st, body
+        wait = 12 * (i + 1)
+        print(f"[init] rate limited on {path}; retry in {wait}s")
+        time.sleep(wait)
+    return st, body
+
 print("[init] waiting for core health...")
 for _ in range(60):
     try:
@@ -33,7 +44,7 @@ for _ in range(60):
 else:
     sys.exit("[init] FATAL: core not ready")
 
-st, login = call("POST", "/api/admin/v2/login",
+st, login = call_retry("POST", "/api/admin/v2/login",
                  {"username": USER, "password": PASSWORD})
 csrf = (login.get("data") or {}).get("csrfToken") if isinstance(login, dict) else None
 if st != 200 or not csrf:
@@ -44,7 +55,7 @@ agent = {"slug": "pool-demo", "name": "Pool Demo",
          "executor_kind": "remote-pull", "execution_mode": "remote_pull",
          "positions": ["STRATEGIST"], "signing_secret": DEMO_KEY,
          "max_concurrency": 2, "queue_capacity": 8}
-st, resp = call("POST", "/api/admin/v2/agents", agent,
+st, resp = call_retry("POST", "/api/admin/v2/agents", agent,
                 {"X-CSRF-Token": csrf})
 if st in (200, 201):
     print("[init] demo agent 'pool-demo' ready (key = preset DEMO_KEY)")
